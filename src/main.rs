@@ -9,8 +9,6 @@ use defmt_rtt as _;
 use embedded_hal::digital::OutputPin;
 use panic_probe as _;
 
-// Provide an alias for our BSP so we can switch targets quickly.
-// Uncomment the BSP you included in Cargo.toml, the rest of the code does not need to change.
 use rp_pico::{
     self as bsp,
     hal::{
@@ -33,6 +31,12 @@ use usbd_serial::{SerialPort, USB_CLASS_CDC};
 
 // External high-speed crystal on the pico board is 12Mhz
 const XTAL_FREQ_HZ: u32 = 12_000_000;
+const PLL_SYS_250MHZ: PLLConfig = PLLConfig {
+    vco_freq: HertzU32::MHz(1500),
+    refdiv: 1,
+    post_div1: 6,
+    post_div2: 1,
+};
 
 #[entry]
 fn main() -> ! {
@@ -46,12 +50,7 @@ fn main() -> ! {
     let pll_sys = setup_pll_blocking(
         pac.PLL_SYS,
         xosc.operating_frequency(),
-        PLLConfig {
-            vco_freq: HertzU32::MHz(1500),
-            refdiv: 1,
-            post_div1: 6,
-            post_div2: 1,
-        },
+        PLL_SYS_250MHZ,
         &mut clocks,
         &mut pac.RESETS,
     )

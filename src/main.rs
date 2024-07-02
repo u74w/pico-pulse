@@ -1,5 +1,4 @@
-//!
-//! This will blink an LED attached to GP25, which is the pin the Pico uses for the on-board LED.
+// Pico Pulse Generator
 #![no_std]
 #![no_main]
 
@@ -46,7 +45,7 @@ fn main() -> ! {
 
     let pll_sys = setup_pll_blocking(
         pac.PLL_SYS,
-        xosc.operating_frequency().into(),
+        xosc.operating_frequency(),
         PLLConfig {
             vco_freq: HertzU32::MHz(1500),
             refdiv: 1,
@@ -60,7 +59,7 @@ fn main() -> ! {
 
     let pll_usb = setup_pll_blocking(
         pac.PLL_USB,
-        xosc.operating_frequency().into(),
+        xosc.operating_frequency(),
         PLL_USB_48MHZ,
         &mut clocks,
         &mut pac.RESETS,
@@ -102,9 +101,9 @@ fn main() -> ! {
     );
     let usb_bus: &'static UsbBusAllocator<UsbBus> =
         singleton!(: UsbBusAllocator<UsbBus> = UsbBusAllocator::new(usb_bus)).unwrap();
-    let mut serial = SerialPort::new(&usb_bus);
+    let mut serial = SerialPort::new(usb_bus);
     let descriptor = StringDescriptors::new(LangID::EN_US).product("Pico-Pulse");
-    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
+    let mut usb_dev = UsbDeviceBuilder::new(usb_bus, UsbVidPid(0x16c0, 0x27dd))
         .strings(&[descriptor])
         .unwrap()
         .device_class(USB_CLASS_CDC)

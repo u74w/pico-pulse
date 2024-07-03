@@ -34,7 +34,7 @@ mod pulse_generator;
 use pulse_generator::PulseGenerator;
 
 // External high-speed crystal on the pico board is 12Mhz
-const XTAL_FREQ_HZ: u32 = 12_000_000;
+const XTAL_FREQ: HertzU32 = HertzU32::MHz(12);
 const PLL_SYS_250MHZ: PLLConfig = PLLConfig {
     vco_freq: HertzU32::MHz(1500),
     refdiv: 1,
@@ -49,7 +49,7 @@ fn main() -> ! {
 
     let mut clocks = ClocksManager::new(pac.CLOCKS);
 
-    let xosc = setup_xosc_blocking(pac.XOSC, XTAL_FREQ_HZ.Hz()).unwrap();
+    let xosc = setup_xosc_blocking(pac.XOSC, XTAL_FREQ).unwrap();
 
     let pll_sys = setup_pll_blocking(
         pac.PLL_SYS,

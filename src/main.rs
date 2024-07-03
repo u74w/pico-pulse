@@ -9,19 +9,19 @@ use defmt_rtt as _;
 use embedded_hal::digital::OutputPin;
 use panic_probe as _;
 
-use rp2040_hal::{dma::DMAExt, pio::PIOExt};
-use rp_pico::{
-    self as bsp,
-    hal::{
-        clocks::{ClockSource, ClocksManager},
-        fugit::{HertzU32, RateExtU32},
-        pll::{common_configs::PLL_USB_48MHZ, setup_pll_blocking, PLLConfig},
-        usb::UsbBus,
-        xosc::setup_xosc_blocking,
-    },
-};
+use rp_pico as bsp;
 
-use bsp::hal::{clocks::Clock, pac, sio::Sio};
+use bsp::hal::{
+    clocks::{Clock, ClockSource, ClocksManager},
+    dma::DMAExt,
+    fugit::{HertzU32, RateExtU32},
+    pac,
+    pio::PIOExt,
+    pll::{common_configs::PLL_USB_48MHZ, setup_pll_blocking, PLLConfig},
+    sio::Sio,
+    usb::UsbBus,
+    xosc::setup_xosc_blocking,
+};
 
 use usb_device::{
     bus::UsbBusAllocator,

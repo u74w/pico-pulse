@@ -2,10 +2,13 @@ use defmt::info;
 use pio::{
     ArrayVec, Assembler, JmpCondition, MovDestination, MovOperation, MovSource, SideSet, WaitSource,
 };
-use rp2040_hal::dma::{self, CH0, CH1};
-use rp2040_hal::pac::PIO0;
-use rp2040_hal::pio::{
-    Buffers::OnlyTx, PIOBuilder, Running, Rx, StateMachine, Tx, UninitStateMachine, PIO, SM0, SM1,
+use rp2040_hal::{
+    dma::{self, CH0, CH1},
+    pac::PIO0,
+    pio::{
+        Buffers::OnlyTx, PIOBuilder, Running, Rx, StateMachine, Tx, UninitStateMachine, PIO, SM0,
+        SM1,
+    },
 };
 
 pub const NUM_PULSES_MAX: usize = 32;

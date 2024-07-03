@@ -9,6 +9,7 @@ use defmt_rtt as _;
 use embedded_hal::digital::OutputPin;
 use panic_probe as _;
 
+use rp2040_hal::{dma::DMAExt, pio::PIOExt};
 use rp_pico::{
     self as bsp,
     hal::{
@@ -28,6 +29,9 @@ use usb_device::{
     LangID, UsbError,
 };
 use usbd_serial::{SerialPort, USB_CLASS_CDC};
+
+mod pulse_generator;
+use pulse_generator::PulseGenerator;
 
 // External high-speed crystal on the pico board is 12Mhz
 const XTAL_FREQ_HZ: u32 = 12_000_000;
@@ -110,6 +114,13 @@ fn main() -> ! {
 
     let mut led_pin = pins.led.into_push_pull_output();
     led_pin.set_high().unwrap();
+
+    let (pio, sm0, sm1, _, _) = pac.PIO0.split(&mut pac.RESETS);
+    let dma = pac.DMA.split(&mut pac.RESETS);
+    let mut pulse_gen = PulseGenerator::new(pio, sm0, sm1, dma.ch0, dma.ch1);
+    pulse_gen.set_delay(10);
+    pulse_gen.set_width(10);
+    pulse_gen.arm();
 
     loop {
         if !usb_dev.poll(&mut [&mut serial]) {

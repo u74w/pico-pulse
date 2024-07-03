@@ -90,11 +90,11 @@ impl PulseGenerator {
     }
 
     pub fn set_delay(&mut self, delay: u32) {
-        self.params[0].delay.push(delay);
+        self.params[0].delay.push(delay.saturating_sub(1));
     }
 
     pub fn set_width(&mut self, width: u32) {
-        self.params[0].width.push(width);
+        self.params[0].width.push(width.saturating_sub(1));
     }
 
     pub fn compile(&mut self) -> pio::Program<32> {

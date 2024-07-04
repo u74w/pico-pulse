@@ -60,6 +60,14 @@ impl PulseGenerator {
         }
     }
 
+    pub fn check(&mut self) {
+        let sm = self.sm.take().unwrap();
+        let sm = sm.stop();
+        info!("sm address: {}", sm.instruction_address());
+        let sm = sm.start();
+        self.sm = Some(sm);
+    }
+
     pub fn arm(&mut self) {
         info!("arm");
         match self.sm.take() {
@@ -67,19 +75,22 @@ impl PulseGenerator {
                 let (sm, old) = sm.uninit(self.rx.take().unwrap(), self.tx.take().unwrap());
                 self.pio.uninstall(old);
                 let program = self.compile();
+                info!("Program[3]: {}", program.code[3]);
                 info!("install");
                 let program = self.pio.install(&program).unwrap();
                 info!("sm");
                 let (sm, rx, mut tx) = PIOBuilder::from_installed_program(program)
                     .buffers(OnlyTx)
                     .side_set_pin_base(15)
+                    .in_pin_base(0)
                     .build(sm);
                 info!("edge");
-                tx.write(1); // number of trigger edges
+                tx.write(0); // number of trigger edges
                 info!("delay");
                 tx.write(self.params[0].delay[0]);
                 info!("width");
                 tx.write(self.params[0].width[0]);
+
                 let sm = sm.start();
                 self.sm = Some(sm);
                 self.tx = Some(tx);
@@ -108,8 +119,8 @@ impl PulseGenerator {
         // Wait number of edges
         let mut edge_label = asm.label();
         asm.bind(&mut edge_label);
-        asm.wait(0, WaitSource::GPIO, 0, false);
-        asm.wait(1, WaitSource::GPIO, 0, false);
+        asm.wait(0, WaitSource::PIN, 0, false);
+        asm.wait(1, WaitSource::PIN, 0, false);
         asm.jmp(JmpCondition::YDecNonZero, &mut edge_label);
 
         // Get delay cycles

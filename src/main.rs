@@ -15,6 +15,7 @@ use bsp::hal::{
     clocks::{Clock, ClockSource, ClocksManager},
     dma::DMAExt,
     fugit::HertzU32,
+    gpio::FunctionPio0,
     pac,
     pio::PIOExt,
     pll::{common_configs::PLL_USB_48MHZ, setup_pll_blocking, PLLConfig},
@@ -112,6 +113,31 @@ fn main() -> ! {
         .device_class(USB_CLASS_CDC)
         .build();
 
+    // init pins for PIO
+    pins.gpio0.into_function::<FunctionPio0>();
+    pins.gpio1.into_function::<FunctionPio0>();
+    pins.gpio2.into_function::<FunctionPio0>();
+    pins.gpio3.into_function::<FunctionPio0>();
+    pins.gpio4.into_function::<FunctionPio0>();
+    pins.gpio5.into_function::<FunctionPio0>();
+    pins.gpio6.into_function::<FunctionPio0>();
+    pins.gpio7.into_function::<FunctionPio0>();
+    pins.gpio8.into_function::<FunctionPio0>();
+    pins.gpio9.into_function::<FunctionPio0>();
+    pins.gpio10.into_function::<FunctionPio0>();
+    pins.gpio11.into_function::<FunctionPio0>();
+    pins.gpio12.into_function::<FunctionPio0>();
+    pins.gpio13.into_function::<FunctionPio0>();
+    pins.gpio14.into_function::<FunctionPio0>();
+    pins.gpio15.into_function::<FunctionPio0>();
+    pins.gpio16.into_function::<FunctionPio0>();
+    pins.gpio17.into_function::<FunctionPio0>();
+    pins.gpio18.into_function::<FunctionPio0>();
+    pins.gpio19.into_function::<FunctionPio0>();
+    pins.gpio20.into_function::<FunctionPio0>();
+    pins.gpio21.into_function::<FunctionPio0>();
+    pins.gpio22.into_function::<FunctionPio0>();
+
     let mut led_pin = pins.led.into_push_pull_output();
     led_pin.set_high().unwrap();
 
@@ -131,6 +157,7 @@ fn main() -> ! {
         match serial.read(&mut buf[..]) {
             Ok(_count) => {
                 serial.write(&buf).unwrap();
+                pulse_gen.check();
             }
             Err(UsbError::WouldBlock) => {} // No data received
             Err(_err) => {}                 // An error occurred

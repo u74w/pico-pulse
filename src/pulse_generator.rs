@@ -3,12 +3,8 @@ use pio::{
     ArrayVec, Assembler, JmpCondition, MovDestination, MovOperation, MovSource, SideSet, WaitSource,
 };
 use rp2040_hal::{
-    dma::{self, CH0, CH1},
-    pac::PIO0,
-    pio::{
-        Buffers::OnlyTx, PIOBuilder, Running, Rx, StateMachine, Tx, UninitStateMachine, PIO, SM0,
-        SM1,
-    },
+    pac::{DMA, PIO0, RESETS},
+    pio::{Buffers::OnlyTx, PIOBuilder, PIOExt, Running, Rx, StateMachine, Tx, PIO, SM0},
 };
 
 pub const NUM_PULSES_MAX: usize = 32;
@@ -36,14 +32,8 @@ pub struct PulseGenerator {
 }
 
 impl PulseGenerator {
-    pub fn new(
-        pio: PIO<PIO0>,
-        sm0: UninitStateMachine<(PIO0, SM0)>,
-        _sm1: UninitStateMachine<(PIO0, SM1)>,
-        _dma_ch0: dma::Channel<CH0>,
-        _dma_ch1: dma::Channel<CH1>,
-    ) -> Self {
-        let mut pio = pio;
+    pub fn new(pio: PIO0, _dma: DMA, resets: &mut RESETS) -> Self {
+        let (mut pio, sm0, _, _, _) = pio.split(resets);
         let mut asm = Assembler::new();
         asm.push(true, true);
         let program = pio.install(&asm.assemble_program()).unwrap();

@@ -13,11 +13,9 @@ use rp_pico as bsp;
 
 use bsp::hal::{
     clocks::{Clock, ClockSource, ClocksManager},
-    dma::DMAExt,
     fugit::HertzU32,
     gpio::FunctionPio0,
     pac,
-    pio::PIOExt,
     pll::{common_configs::PLL_USB_48MHZ, setup_pll_blocking, PLLConfig},
     sio::Sio,
     usb::UsbBus,
@@ -141,9 +139,7 @@ fn main() -> ! {
     let mut led_pin = pins.led.into_push_pull_output();
     led_pin.set_high().unwrap();
 
-    let (pio, sm0, sm1, _, _) = pac.PIO0.split(&mut pac.RESETS);
-    let dma = pac.DMA.split(&mut pac.RESETS);
-    let mut pulse_gen = PulseGenerator::new(pio, sm0, sm1, dma.ch0, dma.ch1);
+    let mut pulse_gen = PulseGenerator::new(pac.PIO0, pac.DMA, &mut pac.RESETS);
     pulse_gen.set_delay(10);
     pulse_gen.set_width(10);
     pulse_gen.arm();

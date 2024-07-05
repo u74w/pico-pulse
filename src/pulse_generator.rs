@@ -9,6 +9,17 @@ use rp2040_hal::{
 
 pub const NUM_PULSES_MAX: usize = 32;
 
+enum Polarity {
+    Rising,
+    Falling,
+}
+
+pub struct EdgeTrigger {
+    index: u8,
+    polarity: Polarity,
+    count: u32,
+}
+
 pub struct PulseParameter {
     delay: ArrayVec<u32, NUM_PULSES_MAX>,
     width: ArrayVec<u32, NUM_PULSES_MAX>,

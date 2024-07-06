@@ -20,7 +20,6 @@ pub enum EdgePolarity {
 pub struct EdgeTrigger {
     pub index: u8,
     pub polarity: EdgePolarity,
-    pub count: u32,
 }
 
 pub enum Trigger {
@@ -32,6 +31,7 @@ pub struct PulseParameter {
     index: u8,
     delay: ArrayVec<u32, NUM_PULSES_MAX>,
     width: ArrayVec<u32, NUM_PULSES_MAX>,
+    trigger_edge_count: u32,
 }
 
 impl PulseParameter {
@@ -40,6 +40,7 @@ impl PulseParameter {
             index,
             delay: ArrayVec::new(),
             width: ArrayVec::new(),
+            trigger_edge_count: 0,
         }
     }
 }
@@ -72,16 +73,36 @@ impl<SM: ValidStateMachine> PulseGeneratorChannel<SM> {
         self.param.width.push(cycle.saturating_sub(1));
     }
 
-    pub fn arm(&mut self) {
+    pub fn set_trigger_edge_count(&mut self, count: u32) {
+        self.param.trigger_edge_count = count.saturating_sub(1);
+    }
+
+    pub fn arm(&mut self) -> Result<(), ()> {
+        if self.param.delay.len() != self.param.width.len() {
+            return Err(());
+        }
+
         let sm = self.sm.take().unwrap();
         let sm = sm.stop();
         let mut tx = self.tx.take().unwrap();
-        tx.write(0);
-        tx.write(self.param.delay[0]);
-        tx.write(self.param.width[0]);
+
+        tx.write(self.param.trigger_edge_count);
+
+        loop {
+            if let Some(delay) = self.param.delay.pop_at(0) {
+                tx.write(delay);
+            }
+            if let Some(width) = self.param.width.pop_at(0) {
+                tx.write(width);
+                continue;
+            }
+            break;
+        }
         let sm = sm.start();
         self.sm = Some(sm);
         self.tx = Some(tx);
+
+        Ok(())
     }
 }
 

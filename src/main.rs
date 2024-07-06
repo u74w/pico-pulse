@@ -142,12 +142,14 @@ fn main() -> ! {
     let trigger = Trigger::Edge(EdgeTrigger {
         index: 0,
         polarity: EdgePolarity::Rising,
-        count: 1,
     });
     let mut pulse_gen = PulseGenerator::new(pac.PIO0, pac.DMA, trigger, &mut pac.RESETS);
-    pulse_gen.ch0.set_delay(10);
+    pulse_gen.ch0.set_trigger_edge_count(1);
+    pulse_gen.ch0.set_delay(10_000);
     pulse_gen.ch0.set_width(10_000);
-    pulse_gen.ch0.arm();
+    pulse_gen.ch0.set_delay(10_000);
+    pulse_gen.ch0.set_width(10_000);
+    pulse_gen.ch0.arm().unwrap();
 
     loop {
         if !usb_dev.poll(&mut [&mut serial]) {

@@ -1,4 +1,3 @@
-use defmt::info;
 use pio::{
     ArrayVec, Assembler, JmpCondition, MovDestination, MovOperation, MovSource, SideSet,
     WaitSource, RP2040_MAX_PROGRAM_SIZE,
@@ -43,13 +42,6 @@ impl PulseParameter {
             width: ArrayVec::new(),
         }
     }
-}
-
-pub enum ChannelIndex {
-    CH0,
-    CH1,
-    CH2,
-    CH3,
 }
 
 struct PulseGeneratorChannel<SM>
@@ -107,16 +99,7 @@ impl PulseGenerator {
         }
     }
 
-    pub fn check(&mut self) {
-        let sm = self.ch0.sm.take().unwrap();
-        let sm = sm.stop();
-        info!("sm address: {}", sm.instruction_address());
-        let sm = sm.start();
-        self.ch0.sm = Some(sm);
-    }
-
     pub fn arm(&mut self) {
-        info!("arm");
         match self.ch0.sm.take() {
             Some(sm) => {
                 let (sm, old) = sm.uninit(self.ch0.rx.take().unwrap(), self.ch0.tx.take().unwrap());

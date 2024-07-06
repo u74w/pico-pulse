@@ -14,7 +14,7 @@ use rp_pico as bsp;
 use bsp::hal::{
     clocks::{Clock, ClockSource, ClocksManager},
     fugit::HertzU32,
-    gpio::{FunctionPio0, PinState},
+    gpio::FunctionPio0,
     pac,
     pll::{common_configs::PLL_USB_48MHZ, setup_pll_blocking, PLLConfig},
     sio::Sio,
@@ -158,7 +158,6 @@ fn main() -> ! {
         match serial.read(&mut buf[..]) {
             Ok(_count) => {
                 serial.write(&buf).unwrap();
-                pulse_gen.check();
             }
             Err(UsbError::WouldBlock) => {} // No data received
             Err(_err) => {}                 // An error occurred

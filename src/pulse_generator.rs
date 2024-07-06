@@ -44,7 +44,7 @@ impl PulseParameter {
     }
 }
 
-struct PulseGeneratorChannel<SM>
+pub struct PulseGeneratorChannel<SM>
 where
     SM: ValidStateMachine,
 {
@@ -54,13 +54,36 @@ where
     param: PulseParameter,
 }
 
+impl<SM: ValidStateMachine> Default for PulseGeneratorChannel<SM> {
+    fn default() -> Self {
+        Self {
+            sm: None,
+            tx: None,
+            rx: None,
+            param: PulseParameter::new(15),
+        }
+    }
+}
+
 impl<SM: ValidStateMachine> PulseGeneratorChannel<SM> {
-    fn set_delay(&mut self, cycle: u32) {
+    pub fn set_delay(&mut self, cycle: u32) {
         self.param.delay.push(cycle.saturating_sub(1));
     }
 
-    fn set_width(&mut self, cycle: u32) {
+    pub fn set_width(&mut self, cycle: u32) {
         self.param.width.push(cycle.saturating_sub(1));
+    }
+
+    pub fn arm(&mut self) {
+        let sm = self.sm.take().unwrap();
+        let sm = sm.stop();
+        let mut tx = self.tx.take().unwrap();
+        tx.write(0);
+        tx.write(self.param.delay[0]);
+        tx.write(self.param.width[0]);
+        let sm = sm.start();
+        self.sm = Some(sm);
+        self.tx = Some(tx);
     }
 }
 
@@ -74,17 +97,23 @@ pub struct PulseGenerator {
 impl PulseGenerator {
     pub fn new(pio: PIO0, _dma: DMA, trigger: Trigger, resets: &mut RESETS) -> Self {
         let (mut pio, sm0, _, _, _) = pio.split(resets);
-        let mut asm = Assembler::new();
-        asm.push(true, true);
-        let program = pio.install(&asm.assemble_program()).unwrap();
-        let (sm, rx, tx) = PIOBuilder::from_installed_program(program)
+
+        // Install program
+        let program = assemble(&trigger);
+        let installed_program = pio.install(&program).unwrap();
+
+        // Configure SM0
+        let (mut sm0, rx, tx) = PIOBuilder::from_installed_program(installed_program)
             .buffers(OnlyTx)
+            .side_set_pin_base(15)
+            .in_pin_base(0)
             .build(sm0);
-        let sm = sm.start();
+        sm0.set_pindirs([(15, PinDir::Output)]);
+        let sm0 = sm0.start();
         Self {
             pio,
             ch0: PulseGeneratorChannel {
-                sm: Some(sm),
+                sm: Some(sm0),
                 tx: Some(tx),
                 rx: Some(rx),
                 param: PulseParameter::new(15),
@@ -98,92 +127,58 @@ impl PulseGenerator {
             trigger,
         }
     }
+}
 
-    pub fn arm(&mut self) {
-        match self.ch0.sm.take() {
-            Some(sm) => {
-                let (sm, old) = sm.uninit(self.ch0.rx.take().unwrap(), self.ch0.tx.take().unwrap());
-                self.pio.uninstall(old);
-                let program = self.compile();
-                let program = self.pio.install(&program).unwrap();
-                let (mut sm, rx, mut tx) = PIOBuilder::from_installed_program(program)
-                    .buffers(OnlyTx)
-                    .side_set_pin_base(15)
-                    .in_pin_base(0)
-                    .build(sm);
-                sm.set_pindirs([(15, PinDir::Output)]);
-                tx.write(0); // number of trigger edges
-                tx.write(self.ch0.param.delay[0]);
-                tx.write(self.ch0.param.width[0]);
+pub fn assemble(trigger: &Trigger) -> pio::Program<RP2040_MAX_PROGRAM_SIZE> {
+    let sideset = SideSet::new(true, 1, false);
+    let mut asm: Assembler<RP2040_MAX_PROGRAM_SIZE> = Assembler::new_with_side_set(sideset);
 
-                let sm = sm.start();
-                self.ch0.sm = Some(sm);
-                self.ch0.tx = Some(tx);
-                self.ch0.rx = Some(rx);
-            }
-            _ => unreachable!(),
-        }
-    }
+    match trigger {
+        Trigger::Edge(edge_trigger) => {
+            // Get number of edges before triggering
+            asm.pull(false, true);
+            asm.mov(MovDestination::Y, MovOperation::None, MovSource::OSR);
 
-    pub fn set_delay(&mut self, delay: u32) {
-        self.ch0.param.delay.push(delay.saturating_sub(1));
-    }
-
-    pub fn set_width(&mut self, width: u32) {
-        self.ch0.param.width.push(width.saturating_sub(1));
-    }
-
-    pub fn compile(&self) -> pio::Program<RP2040_MAX_PROGRAM_SIZE> {
-        let sideset = SideSet::new(true, 1, false);
-        let mut asm: Assembler<RP2040_MAX_PROGRAM_SIZE> = Assembler::new_with_side_set(sideset);
-
-        match &self.trigger {
-            Trigger::Edge(edge_trigger) => {
-                // Get number of edges before triggering
-                asm.pull(false, true);
-                asm.mov(MovDestination::Y, MovOperation::None, MovSource::OSR);
-
-                // Wait number of edges
-                let mut edge_label = asm.label();
-                asm.bind(&mut edge_label);
-                match edge_trigger.polarity {
-                    EdgePolarity::Falling => {
-                        asm.wait(1, WaitSource::PIN, 0, false);
-                        asm.wait(0, WaitSource::PIN, 0, false);
-                    }
-                    EdgePolarity::Rising => {
-                        asm.wait(0, WaitSource::PIN, 0, false);
-                        asm.wait(1, WaitSource::PIN, 0, false);
-                    }
+            // Wait number of edges
+            let mut edge_label = asm.label();
+            asm.bind(&mut edge_label);
+            match edge_trigger.polarity {
+                EdgePolarity::Falling => {
+                    asm.wait(1, WaitSource::PIN, 0, false);
+                    asm.wait(0, WaitSource::PIN, 0, false);
                 }
-                asm.jmp(JmpCondition::YDecNonZero, &mut edge_label);
+                EdgePolarity::Rising => {
+                    asm.wait(0, WaitSource::PIN, 0, false);
+                    asm.wait(1, WaitSource::PIN, 0, false);
+                }
             }
-            Trigger::Immediate => (),
+            asm.jmp(JmpCondition::YDecNonZero, &mut edge_label);
         }
-
-        // Get delay cycles
-        let mut loop_label = asm.label();
-        asm.bind(&mut loop_label);
-        asm.pull(false, true);
-        asm.mov(MovDestination::X, MovOperation::None, MovSource::OSR);
-
-        // Get width cycles
-        asm.pull(false, true);
-        asm.mov(MovDestination::Y, MovOperation::None, MovSource::OSR);
-
-        // Wait delay cycles
-        let mut delay_label = asm.label();
-        asm.bind(&mut delay_label);
-        asm.jmp(JmpCondition::XDecNonZero, &mut delay_label);
-
-        // Wait width cycles (Pulse High)
-        let mut width_label = asm.label();
-        asm.bind(&mut width_label);
-        asm.jmp_with_side_set(JmpCondition::YDecNonZero, &mut width_label, 1);
-
-        // Loop (Pulse Low)
-        asm.jmp_with_side_set(JmpCondition::Always, &mut loop_label, 0);
-
-        asm.assemble_program().set_origin(Some(0))
+        Trigger::Immediate => (),
     }
+
+    // Get delay cycles
+    let mut loop_label = asm.label();
+    asm.bind(&mut loop_label);
+    asm.pull(false, true);
+    asm.mov(MovDestination::X, MovOperation::None, MovSource::OSR);
+
+    // Get width cycles
+    asm.pull(false, true);
+    asm.mov(MovDestination::Y, MovOperation::None, MovSource::OSR);
+
+    // Wait delay cycles
+    let mut delay_label = asm.label();
+    asm.bind(&mut delay_label);
+    asm.jmp(JmpCondition::XDecNonZero, &mut delay_label);
+
+    // Wait width cycles (Pulse High)
+    let mut width_label = asm.label();
+    asm.bind(&mut width_label);
+    asm.jmp_with_side_set(JmpCondition::YDecNonZero, &mut width_label, 1);
+
+    // Loop (Pulse Low)
+    asm.jmp_with_side_set(JmpCondition::Always, &mut loop_label, 0);
+
+    asm.assemble_program().set_origin(Some(0))
 }

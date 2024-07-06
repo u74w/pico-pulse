@@ -145,9 +145,9 @@ fn main() -> ! {
         count: 1,
     });
     let mut pulse_gen = PulseGenerator::new(pac.PIO0, pac.DMA, trigger, &mut pac.RESETS);
-    pulse_gen.set_delay(10);
-    pulse_gen.set_width(10_000);
-    pulse_gen.arm();
+    pulse_gen.ch0.set_delay(10);
+    pulse_gen.ch0.set_width(10_000);
+    pulse_gen.ch0.arm();
 
     loop {
         if !usb_dev.poll(&mut [&mut serial]) {

@@ -14,7 +14,7 @@ use rp_pico as bsp;
 use bsp::hal::{
     clocks::{Clock, ClockSource, ClocksManager},
     fugit::HertzU32,
-    gpio::FunctionPio0,
+    gpio::{FunctionPio0, PinState},
     pac,
     pll::{common_configs::PLL_USB_48MHZ, setup_pll_blocking, PLLConfig},
     sio::Sio,
@@ -127,7 +127,8 @@ fn main() -> ! {
     pins.gpio12.into_function::<FunctionPio0>();
     pins.gpio13.into_function::<FunctionPio0>();
     pins.gpio14.into_function::<FunctionPio0>();
-    pins.gpio15.into_function::<FunctionPio0>();
+    let gp15 = pins.gpio15.into_function::<FunctionPio0>();
+    //pins.gpio15.into_push_pull_output_in_state(PinState::Low);
     pins.gpio16.into_function::<FunctionPio0>();
     pins.gpio17.into_function::<FunctionPio0>();
     pins.gpio18.into_function::<FunctionPio0>();
@@ -141,7 +142,7 @@ fn main() -> ! {
 
     let mut pulse_gen = PulseGenerator::new(pac.PIO0, pac.DMA, &mut pac.RESETS);
     pulse_gen.set_delay(10);
-    pulse_gen.set_width(10);
+    pulse_gen.set_width(10_000);
     pulse_gen.arm();
 
     loop {

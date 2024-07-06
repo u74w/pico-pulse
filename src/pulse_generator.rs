@@ -6,22 +6,27 @@ use pio::{
 use rp2040_hal::{
     pac::{DMA, PIO0, RESETS},
     pio::{
-        Buffers::OnlyTx, PIOBuilder, PIOExt, PinDir, Running, Rx, StateMachine, StateMachineIndex,
-        Tx, ValidStateMachine, PIO, PIO0SM0, PIO0SM1, SM0, SM1, SM2, SM3,
+        Buffers::OnlyTx, PIOBuilder, PIOExt, PinDir, Running, Rx, StateMachine, Tx,
+        ValidStateMachine, PIO, PIO0SM0, PIO0SM1,
     },
 };
 
 pub const NUM_PULSES_MAX: usize = 32;
 
-enum EdgePolarity {
+pub enum EdgePolarity {
     Rising,
     Falling,
 }
 
 pub struct EdgeTrigger {
-    index: u8,
-    polarity: EdgePolarity,
-    count: u32,
+    pub index: u8,
+    pub polarity: EdgePolarity,
+    pub count: u32,
+}
+
+pub enum Trigger {
+    Edge(EdgeTrigger),
+    Immediate,
 }
 
 pub struct PulseParameter {
@@ -71,10 +76,11 @@ pub struct PulseGenerator {
     pio: PIO<PIO0>,
     pub ch0: PulseGeneratorChannel<PIO0SM0>,
     pub ch1: PulseGeneratorChannel<PIO0SM1>,
+    trigger: Trigger,
 }
 
 impl PulseGenerator {
-    pub fn new(pio: PIO0, _dma: DMA, resets: &mut RESETS) -> Self {
+    pub fn new(pio: PIO0, _dma: DMA, trigger: Trigger, resets: &mut RESETS) -> Self {
         let (mut pio, sm0, _, _, _) = pio.split(resets);
         let mut asm = Assembler::new();
         asm.push(true, true);
@@ -97,6 +103,7 @@ impl PulseGenerator {
                 rx: None,
                 param: PulseParameter::new(16),
             },
+            trigger,
         }
     }
 
@@ -115,21 +122,15 @@ impl PulseGenerator {
                 let (sm, old) = sm.uninit(self.ch0.rx.take().unwrap(), self.ch0.tx.take().unwrap());
                 self.pio.uninstall(old);
                 let program = self.compile();
-                info!("Program[3]: {}", program.code[3]);
-                info!("install");
                 let program = self.pio.install(&program).unwrap();
-                info!("sm");
                 let (mut sm, rx, mut tx) = PIOBuilder::from_installed_program(program)
                     .buffers(OnlyTx)
                     .side_set_pin_base(15)
                     .in_pin_base(0)
                     .build(sm);
                 sm.set_pindirs([(15, PinDir::Output)]);
-                info!("edge");
                 tx.write(0); // number of trigger edges
-                info!("delay");
                 tx.write(self.ch0.param.delay[0]);
-                info!("width");
                 tx.write(self.ch0.param.width[0]);
 
                 let sm = sm.start();
@@ -149,20 +150,33 @@ impl PulseGenerator {
         self.ch0.param.width.push(width.saturating_sub(1));
     }
 
-    pub fn compile(&mut self) -> pio::Program<RP2040_MAX_PROGRAM_SIZE> {
+    pub fn compile(&self) -> pio::Program<RP2040_MAX_PROGRAM_SIZE> {
         let sideset = SideSet::new(true, 1, false);
         let mut asm: Assembler<RP2040_MAX_PROGRAM_SIZE> = Assembler::new_with_side_set(sideset);
 
-        // Get number of edges before triggering
-        asm.pull(false, true);
-        asm.mov(MovDestination::Y, MovOperation::None, MovSource::OSR);
+        match &self.trigger {
+            Trigger::Edge(edge_trigger) => {
+                // Get number of edges before triggering
+                asm.pull(false, true);
+                asm.mov(MovDestination::Y, MovOperation::None, MovSource::OSR);
 
-        // Wait number of edges
-        let mut edge_label = asm.label();
-        asm.bind(&mut edge_label);
-        asm.wait(0, WaitSource::PIN, 0, false);
-        asm.wait(1, WaitSource::PIN, 0, false);
-        asm.jmp(JmpCondition::YDecNonZero, &mut edge_label);
+                // Wait number of edges
+                let mut edge_label = asm.label();
+                asm.bind(&mut edge_label);
+                match edge_trigger.polarity {
+                    EdgePolarity::Falling => {
+                        asm.wait(1, WaitSource::PIN, 0, false);
+                        asm.wait(0, WaitSource::PIN, 0, false);
+                    }
+                    EdgePolarity::Rising => {
+                        asm.wait(0, WaitSource::PIN, 0, false);
+                        asm.wait(1, WaitSource::PIN, 0, false);
+                    }
+                }
+                asm.jmp(JmpCondition::YDecNonZero, &mut edge_label);
+            }
+            Trigger::Immediate => (),
+        }
 
         // Get delay cycles
         let mut loop_label = asm.label();

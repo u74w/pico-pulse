@@ -30,7 +30,7 @@ use usb_device::{
 use usbd_serial::{SerialPort, USB_CLASS_CDC};
 
 mod pulse_generator;
-use pulse_generator::PulseGenerator;
+use pulse_generator::{EdgePolarity, EdgeTrigger, PulseGenerator, Trigger};
 
 // External high-speed crystal on the pico board is 12Mhz
 const XTAL_FREQ: HertzU32 = HertzU32::MHz(12);
@@ -127,8 +127,7 @@ fn main() -> ! {
     pins.gpio12.into_function::<FunctionPio0>();
     pins.gpio13.into_function::<FunctionPio0>();
     pins.gpio14.into_function::<FunctionPio0>();
-    let gp15 = pins.gpio15.into_function::<FunctionPio0>();
-    //pins.gpio15.into_push_pull_output_in_state(PinState::Low);
+    pins.gpio15.into_function::<FunctionPio0>();
     pins.gpio16.into_function::<FunctionPio0>();
     pins.gpio17.into_function::<FunctionPio0>();
     pins.gpio18.into_function::<FunctionPio0>();
@@ -140,7 +139,12 @@ fn main() -> ! {
     let mut led_pin = pins.led.into_push_pull_output();
     led_pin.set_high().unwrap();
 
-    let mut pulse_gen = PulseGenerator::new(pac.PIO0, pac.DMA, &mut pac.RESETS);
+    let trigger = Trigger::Edge(EdgeTrigger {
+        index: 0,
+        polarity: EdgePolarity::Rising,
+        count: 1,
+    });
+    let mut pulse_gen = PulseGenerator::new(pac.PIO0, pac.DMA, trigger, &mut pac.RESETS);
     pulse_gen.set_delay(10);
     pulse_gen.set_width(10_000);
     pulse_gen.arm();

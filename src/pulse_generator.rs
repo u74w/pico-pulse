@@ -5,8 +5,8 @@ use pio::{
 use rp2040_hal::{
     pac::{DMA, PIO0, RESETS},
     pio::{
-        Buffers::OnlyTx, PIOBuilder, PIOExt, PinDir, Running, Rx, StateMachine, Tx,
-        ValidStateMachine, PIO, PIO0SM0, PIO0SM1,
+        Buffers::OnlyTx, PIOBuilder, PIOExt, PinDir, Running, StateMachine, Tx, ValidStateMachine,
+        PIO, PIO0SM0, PIO0SM1,
     },
 };
 
@@ -50,7 +50,6 @@ where
 {
     sm: Option<StateMachine<SM, Running>>,
     tx: Option<Tx<SM>>,
-    rx: Option<Rx<SM>>,
     param: PulseParameter,
 }
 
@@ -59,7 +58,6 @@ impl<SM: ValidStateMachine> Default for PulseGeneratorChannel<SM> {
         Self {
             sm: None,
             tx: None,
-            rx: None,
             param: PulseParameter::new(15),
         }
     }
@@ -103,7 +101,7 @@ impl PulseGenerator {
         let installed_program = pio.install(&program).unwrap();
 
         // Configure SM0
-        let (mut sm0, rx, tx) = PIOBuilder::from_installed_program(installed_program)
+        let (mut sm0, _, tx) = PIOBuilder::from_installed_program(installed_program)
             .buffers(OnlyTx)
             .side_set_pin_base(15)
             .in_pin_base(0)
@@ -115,13 +113,11 @@ impl PulseGenerator {
             ch0: PulseGeneratorChannel {
                 sm: Some(sm0),
                 tx: Some(tx),
-                rx: Some(rx),
                 param: PulseParameter::new(15),
             },
             ch1: PulseGeneratorChannel {
                 sm: None,
                 tx: None,
-                rx: None,
                 param: PulseParameter::new(16),
             },
             trigger,

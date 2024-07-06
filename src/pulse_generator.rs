@@ -1,6 +1,7 @@
 use defmt::info;
 use pio::{
-    ArrayVec, Assembler, JmpCondition, MovDestination, MovOperation, MovSource, SideSet, WaitSource,
+    ArrayVec, Assembler, JmpCondition, MovDestination, MovOperation, MovSource, SideSet,
+    WaitSource, RP2040_MAX_PROGRAM_SIZE,
 };
 use rp2040_hal::{
     pac::{DMA, PIO0, RESETS},
@@ -148,9 +149,9 @@ impl PulseGenerator {
         self.ch0.param.width.push(width.saturating_sub(1));
     }
 
-    pub fn compile(&mut self) -> pio::Program<32> {
+    pub fn compile(&mut self) -> pio::Program<RP2040_MAX_PROGRAM_SIZE> {
         let sideset = SideSet::new(true, 1, false);
-        let mut asm: Assembler<32> = Assembler::new_with_side_set(sideset);
+        let mut asm: Assembler<RP2040_MAX_PROGRAM_SIZE> = Assembler::new_with_side_set(sideset);
 
         // Get number of edges before triggering
         asm.pull(false, true);

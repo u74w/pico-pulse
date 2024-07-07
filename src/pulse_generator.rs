@@ -1,3 +1,6 @@
+use core::borrow::Borrow;
+
+use defmt::info;
 use pio::{
     ArrayVec, Assembler, JmpCondition, MovDestination, MovOperation, MovSource, SideSet,
     WaitSource, RP2040_MAX_PROGRAM_SIZE,
@@ -144,6 +147,10 @@ impl<SM: ValidStateMachine, CH: SingleChannel> PulseGeneratorChannel<SM, CH> {
         self.tx_transfer = Some(tx_transfer);
         Ok(())
     }
+
+    pub fn triggered(&self) -> bool {
+        self.tx_transfer.as_ref().unwrap().is_done()
+    }
 }
 
 pub struct PulseGenerator {
@@ -155,21 +162,30 @@ pub struct PulseGenerator {
 
 impl PulseGenerator {
     pub fn new(pio: PIO0, dma: DMA, trigger: Trigger, resets: &mut RESETS) -> Self {
-        let (mut pio, sm0, _, _, _) = pio.split(resets);
+        let (mut pio, sm0, sm1, _, _) = pio.split(resets);
         let dma = dma.split(resets);
 
         // Install program
-        let program = assemble(&trigger);
+        let program = assemble(&trigger, 0);
         let installed_program = pio.install(&program).unwrap();
 
         // Configure SM0
-        let (mut sm0, _, tx) = PIOBuilder::from_installed_program(installed_program)
-            .buffers(OnlyTx)
-            .side_set_pin_base(15)
-            .in_pin_base(0)
-            .build(sm0);
+        let (mut sm0, _, tx) =
+            PIOBuilder::from_installed_program(unsafe { installed_program.share() })
+                .buffers(OnlyTx)
+                .side_set_pin_base(15)
+                .build(sm0);
         sm0.set_pindirs([(15, PinDir::Output)]);
         let sm0 = sm0.start();
+
+        // Configure SM1
+        let (mut sm1, _, tx1) = PIOBuilder::from_installed_program(installed_program)
+            .buffers(OnlyTx)
+            .side_set_pin_base(16)
+            .build(sm1);
+        sm1.set_pindirs([(16, PinDir::Output)]);
+        let sm1 = sm1.start();
+
         Self {
             pio,
             ch0: PulseGeneratorChannel {
@@ -180,9 +196,9 @@ impl PulseGenerator {
                 param: PulseParameter::new(15),
             },
             ch1: PulseGeneratorChannel {
-                sm: None,
-                tx: None,
-                dma_ch: None,
+                sm: Some(sm1),
+                tx: Some(tx1),
+                dma_ch: Some(dma.ch1),
                 tx_transfer: None,
                 param: PulseParameter::new(16),
             },
@@ -191,7 +207,7 @@ impl PulseGenerator {
     }
 }
 
-pub fn assemble(trigger: &Trigger) -> pio::Program<RP2040_MAX_PROGRAM_SIZE> {
+pub fn assemble(trigger: &Trigger, index: u8) -> pio::Program<RP2040_MAX_PROGRAM_SIZE> {
     let sideset = SideSet::new(true, 1, false);
     let mut asm: Assembler<RP2040_MAX_PROGRAM_SIZE> = Assembler::new_with_side_set(sideset);
 
@@ -206,12 +222,12 @@ pub fn assemble(trigger: &Trigger) -> pio::Program<RP2040_MAX_PROGRAM_SIZE> {
             asm.bind(&mut edge_label);
             match edge_trigger.polarity {
                 EdgePolarity::Falling => {
-                    asm.wait(1, WaitSource::PIN, 0, false);
-                    asm.wait(0, WaitSource::PIN, 0, false);
+                    asm.wait(1, WaitSource::GPIO, index, false);
+                    asm.wait(0, WaitSource::GPIO, index, false);
                 }
                 EdgePolarity::Rising => {
-                    asm.wait(0, WaitSource::PIN, 0, false);
-                    asm.wait(1, WaitSource::PIN, 0, false);
+                    asm.wait(0, WaitSource::GPIO, index, false);
+                    asm.wait(1, WaitSource::GPIO, index, false);
                 }
             }
             asm.jmp(JmpCondition::YDecNonZero, &mut edge_label);

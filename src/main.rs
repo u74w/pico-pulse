@@ -153,6 +153,11 @@ fn main() -> ! {
     pulse_gen.ch0.set_width(30_000);
     pulse_gen.ch0.arm().unwrap();
 
+    pulse_gen.ch1.set_trigger_edge_count(1);
+    pulse_gen.ch1.set_delay(20_000);
+    pulse_gen.ch1.set_width(10_000);
+    pulse_gen.ch1.arm().unwrap();
+
     loop {
         if !usb_dev.poll(&mut [&mut serial]) {
             continue;
@@ -162,6 +167,7 @@ fn main() -> ! {
         match serial.read(&mut buf[..]) {
             Ok(_count) => {
                 serial.write(&buf).unwrap();
+                info!("{}", pulse_gen.ch0.triggered());
             }
             Err(UsbError::WouldBlock) => {} // No data received
             Err(_err) => {}                 // An error occurred

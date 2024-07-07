@@ -1,8 +1,14 @@
+use cortex_m::singleton;
+use defmt::info;
 use pio::{
     ArrayVec, Assembler, JmpCondition, MovDestination, MovOperation, MovSource, SideSet,
     WaitSource, RP2040_MAX_PROGRAM_SIZE,
 };
 use rp2040_hal::{
+    dma::{
+        self, single_buffer, Channel, ChannelIndex, DMAExt, ReadTarget, SingleChannel, WriteTarget,
+        CH0, CH1,
+    },
     pac::{DMA, PIO0, RESETS},
     pio::{
         Buffers::OnlyTx, PIOBuilder, PIOExt, PinDir, Running, StateMachine, Tx, ValidStateMachine,
@@ -11,6 +17,7 @@ use rp2040_hal::{
 };
 
 pub const NUM_PULSES_MAX: usize = 32;
+const DMA_BUF_LEN: usize = NUM_PULSES_MAX * 2 + 1;
 
 pub enum EdgePolarity {
     Rising,
@@ -45,26 +52,31 @@ impl PulseParameter {
     }
 }
 
-pub struct PulseGeneratorChannel<SM>
+pub struct PulseGeneratorChannel<SM, CH>
 where
     SM: ValidStateMachine,
+    CH: SingleChannel,
 {
     sm: Option<StateMachine<SM, Running>>,
     tx: Option<Tx<SM>>,
+    dma_ch: Option<CH>,
+    tx_transfer: Option<single_buffer::Transfer<CH, &'static mut [u32; 5], Tx<SM>>>,
     param: PulseParameter,
 }
 
-impl<SM: ValidStateMachine> Default for PulseGeneratorChannel<SM> {
+impl<SM: ValidStateMachine, CH: SingleChannel> Default for PulseGeneratorChannel<SM, CH> {
     fn default() -> Self {
         Self {
             sm: None,
             tx: None,
+            dma_ch: None,
+            tx_transfer: None,
             param: PulseParameter::new(15),
         }
     }
 }
 
-impl<SM: ValidStateMachine> PulseGeneratorChannel<SM> {
+impl<SM: ValidStateMachine, CH: SingleChannel> PulseGeneratorChannel<SM, CH> {
     pub fn set_delay(&mut self, cycle: u32) {
         self.param.delay.push(cycle.saturating_sub(1));
     }
@@ -84,38 +96,51 @@ impl<SM: ValidStateMachine> PulseGeneratorChannel<SM> {
 
         let sm = self.sm.take().unwrap();
         let sm = sm.stop();
-        let mut tx = self.tx.take().unwrap();
+        let tx = self.tx.take().unwrap();
 
-        tx.write(self.param.trigger_edge_count);
+        let mut buf: ArrayVec<u32, 5> = ArrayVec::new();
+        buf.push(self.param.trigger_edge_count);
 
         loop {
             if let Some(delay) = self.param.delay.pop_at(0) {
-                tx.write(delay);
+                buf.push(delay);
             }
             if let Some(width) = self.param.width.pop_at(0) {
-                tx.write(width);
+                buf.push(width);
                 continue;
             }
             break;
         }
+
+        info!("{:?}", buf.as_slice());
+
+        let dma_ch = self.dma_ch.take().unwrap();
+
+        //let buf = buf.into_inner().unwrap();
+        let buf = buf.into_inner().unwrap();
+        info!("{}", buf);
+        let tx_buf = singleton!(: [u32; 5] = buf).unwrap();
+
+        let tx_transfer = single_buffer::Config::new(dma_ch, tx_buf, tx).start();
+
         let sm = sm.start();
         self.sm = Some(sm);
-        self.tx = Some(tx);
-
+        self.tx_transfer = Some(tx_transfer);
         Ok(())
     }
 }
 
 pub struct PulseGenerator {
     pio: PIO<PIO0>,
-    pub ch0: PulseGeneratorChannel<PIO0SM0>,
-    pub ch1: PulseGeneratorChannel<PIO0SM1>,
+    pub ch0: PulseGeneratorChannel<PIO0SM0, Channel<CH0>>,
+    pub ch1: PulseGeneratorChannel<PIO0SM1, Channel<CH1>>,
     trigger: Trigger,
 }
 
 impl PulseGenerator {
-    pub fn new(pio: PIO0, _dma: DMA, trigger: Trigger, resets: &mut RESETS) -> Self {
+    pub fn new(pio: PIO0, dma: DMA, trigger: Trigger, resets: &mut RESETS) -> Self {
         let (mut pio, sm0, _, _, _) = pio.split(resets);
+        let dma = dma.split(resets);
 
         // Install program
         let program = assemble(&trigger);
@@ -134,11 +159,15 @@ impl PulseGenerator {
             ch0: PulseGeneratorChannel {
                 sm: Some(sm0),
                 tx: Some(tx),
+                dma_ch: Some(dma.ch0),
+                tx_transfer: None,
                 param: PulseParameter::new(15),
             },
             ch1: PulseGeneratorChannel {
                 sm: None,
                 tx: None,
+                dma_ch: None,
+                tx_transfer: None,
                 param: PulseParameter::new(16),
             },
             trigger,

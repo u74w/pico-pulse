@@ -1,13 +1,11 @@
-use cortex_m::singleton;
-use defmt::info;
 use pio::{
     ArrayVec, Assembler, JmpCondition, MovDestination, MovOperation, MovSource, SideSet,
     WaitSource, RP2040_MAX_PROGRAM_SIZE,
 };
 use rp2040_hal::{
     dma::{
-        self, single_buffer, Channel, ChannelIndex, DMAExt, ReadTarget, SingleChannel, WriteTarget,
-        CH0, CH1,
+        self, single_buffer, Channel, ChannelIndex, DMAExt, EndlessReadTarget, ReadTarget,
+        SingleChannel, WriteTarget, CH0, CH1,
     },
     pac::{DMA, PIO0, RESETS},
     pio::{
@@ -17,7 +15,6 @@ use rp2040_hal::{
 };
 
 pub const NUM_PULSES_MAX: usize = 32;
-const DMA_BUF_LEN: usize = NUM_PULSES_MAX * 2 + 1;
 
 pub enum EdgePolarity {
     Rising,
@@ -52,6 +49,26 @@ impl PulseParameter {
     }
 }
 
+struct Buffer<'a> {
+    inner: &'a mut [u32],
+}
+
+unsafe impl<'a> ReadTarget for Buffer<'a> {
+    type ReceivedWord = u32;
+
+    fn rx_treq() -> Option<u8> {
+        None
+    }
+
+    fn rx_address_count(&self) -> (u32, u32) {
+        (self.inner.as_ptr() as u32, self.inner.len() as u32)
+    }
+
+    fn rx_increment(&self) -> bool {
+        true
+    }
+}
+
 pub struct PulseGeneratorChannel<SM, CH>
 where
     SM: ValidStateMachine,
@@ -60,7 +77,7 @@ where
     sm: Option<StateMachine<SM, Running>>,
     tx: Option<Tx<SM>>,
     dma_ch: Option<CH>,
-    tx_transfer: Option<single_buffer::Transfer<CH, &'static mut [u32; 5], Tx<SM>>>,
+    tx_transfer: Option<single_buffer::Transfer<CH, Buffer<'static>, Tx<SM>>>,
     param: PulseParameter,
 }
 
@@ -112,14 +129,12 @@ impl<SM: ValidStateMachine, CH: SingleChannel> PulseGeneratorChannel<SM, CH> {
             break;
         }
 
-        info!("{:?}", buf.as_slice());
-
         let dma_ch = self.dma_ch.take().unwrap();
 
-        //let buf = buf.into_inner().unwrap();
-        let buf = buf.into_inner().unwrap();
-        info!("{}", buf);
-        let tx_buf = singleton!(: [u32; 5] = buf).unwrap();
+        let buf = buf.as_mut_slice();
+        let tx_buf = Buffer {
+            inner: unsafe { core::slice::from_raw_parts_mut(buf.as_mut_ptr(), buf.len()) },
+        };
 
         let tx_transfer = single_buffer::Config::new(dma_ch, tx_buf, tx).start();
 

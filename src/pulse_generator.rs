@@ -15,6 +15,7 @@ use rp2040_hal::{
 };
 
 pub const NUM_PULSES_MAX: usize = 32;
+const DMA_BUF_LEN: usize = NUM_PULSES_MAX * 2 + 1;
 
 pub enum EdgePolarity {
     Rising,
@@ -115,7 +116,7 @@ impl<SM: ValidStateMachine, CH: SingleChannel> PulseGeneratorChannel<SM, CH> {
         let sm = sm.stop();
         let tx = self.tx.take().unwrap();
 
-        let mut buf: ArrayVec<u32, 5> = ArrayVec::new();
+        let mut buf: ArrayVec<u32, DMA_BUF_LEN> = ArrayVec::new();
         buf.push(self.param.trigger_edge_count);
 
         loop {

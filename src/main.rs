@@ -147,8 +147,10 @@ fn main() -> ! {
     pulse_gen.ch0.set_trigger_edge_count(1);
     pulse_gen.ch0.set_delay(10_000);
     pulse_gen.ch0.set_width(10_000);
-    pulse_gen.ch0.set_delay(10_000);
-    pulse_gen.ch0.set_width(10_000);
+    pulse_gen.ch0.set_delay(20_000);
+    pulse_gen.ch0.set_width(20_000);
+    pulse_gen.ch0.set_delay(30_000);
+    pulse_gen.ch0.set_width(30_000);
     pulse_gen.ch0.arm().unwrap();
 
     loop {
